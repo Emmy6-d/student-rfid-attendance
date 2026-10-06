@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CreditCard, Pause, Play, Radio, Search } from 'lucide-react'
+import { Check, CreditCard, Pause, Play, Radio, RefreshCw, Search } from 'lucide-react'
 import { api } from '../api.js'
 import CardEnrollmentDialog from '../components/CardEnrollmentDialog.jsx'
 import { EmptyState, LoadingState, Notice, PageHeader, StatusPill } from '../components/ui.jsx'
@@ -13,6 +13,7 @@ function CardsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -30,6 +31,7 @@ function CardsPage() {
         if (active) {
           setCards(cardRows)
           setStudents(studentRows)
+          setHasLoaded(true)
         }
       } catch (requestError) {
         if (active) setError(requestError.message)
@@ -156,9 +158,12 @@ function CardsPage() {
             <Search size={16} aria-hidden="true" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search UID or student" aria-label="Search cards" />
           </label>
+          {loading && hasLoaded && (
+            <span className="refresh-indicator" role="status"><RefreshCw className="spin" size={13} /> Updating</span>
+          )}
         </div>
 
-        {loading ? <LoadingState label="Loading RFID cards" /> : error && !cards.length ? (
+        {loading && !hasLoaded ? <LoadingState label="Loading RFID cards" /> : error && !hasLoaded ? (
           <EmptyState
             icon={CreditCard}
             title="RFID cards unavailable"

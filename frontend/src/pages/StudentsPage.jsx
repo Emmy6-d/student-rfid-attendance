@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Pencil, Plus, Search, UserRoundPlus, UsersRound, X } from 'lucide-react'
+import { Check, Pencil, Plus, RefreshCw, Search, UserRoundPlus, UsersRound, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { EmptyState, LoadingState, Notice, PageHeader, StatusPill } from '../components/ui.jsx'
@@ -18,6 +18,7 @@ function StudentsPage() {
   const [students, setStudents] = useState([])
   const [cards, setCards] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
   const [search, setSearch] = useState('')
@@ -39,6 +40,7 @@ function StudentsPage() {
         if (active) {
           setStudents(studentRows)
           setCards(cardRows)
+          setHasLoaded(true)
         }
       } catch (requestError) {
         if (active) setError(requestError.message)
@@ -137,9 +139,12 @@ function StudentsPage() {
               aria-label="Search students"
             />
           </label>
+          {loading && hasLoaded && (
+            <span className="refresh-indicator" role="status"><RefreshCw className="spin" size={13} /> Updating</span>
+          )}
         </div>
 
-        {loading ? <LoadingState label="Loading student register" /> : error && !students.length ? (
+        {loading && !hasLoaded ? <LoadingState label="Loading student register" /> : error && !hasLoaded ? (
           <EmptyState
             icon={UsersRound}
             title="Student register unavailable"

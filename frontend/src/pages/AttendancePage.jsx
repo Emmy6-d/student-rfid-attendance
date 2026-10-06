@@ -7,6 +7,7 @@ function AttendancePage() {
   const [date, setDate] = useState(localDateInKigali())
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
 
@@ -20,7 +21,10 @@ function AttendancePage() {
       try {
         const query = new URLSearchParams({ attendance_date: date, limit: '500' })
         const result = await api(`/attendance?${query}`)
-        if (active) setRecords(result)
+        if (active) {
+          setRecords(result)
+          setHasLoaded(true)
+        }
       } catch (requestError) {
         if (active) setError(requestError.message)
       } finally {
@@ -71,7 +75,7 @@ function AttendancePage() {
       <section className="panel data-panel">
         <div className="data-toolbar attendance-toolbar">
           <div className="record-count"><Activity size={17} />
-            <span><strong>{loading || error ? '—' : records.length}</strong> check-ins</span>
+            <span><strong>{!hasLoaded && (loading || error) ? '—' : records.length}</strong> check-ins</span>
           </div>
           <div className="toolbar-controls">
             <label className="date-field">
@@ -79,12 +83,15 @@ function AttendancePage() {
               <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
             </label>
             <button className="icon-button" onClick={() => setReload((value) => value + 1)} aria-label="Refresh attendance" title="Refresh">
-              <RefreshCw size={17} />
+              <RefreshCw className={loading && hasLoaded ? 'spin' : ''} size={17} />
             </button>
+            {loading && hasLoaded && (
+              <span className="refresh-indicator" role="status">Updating</span>
+            )}
           </div>
         </div>
 
-        {loading ? <LoadingState label="Loading attendance records" /> : error ? (
+        {loading && !hasLoaded ? <LoadingState label="Loading attendance records" /> : error && !hasLoaded ? (
           <EmptyState
             icon={Activity}
             title="Attendance log unavailable"

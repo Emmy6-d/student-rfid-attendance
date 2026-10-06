@@ -25,6 +25,7 @@ function DashboardPage() {
   const [statistics, setStatistics] = useState(null)
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
 
@@ -44,6 +45,7 @@ function DashboardPage() {
         if (active) {
           setStatistics(stats)
           setAttendance(records)
+          setHasLoaded(true)
         }
       } catch (requestError) {
         if (active) setError(requestError.message)
@@ -71,8 +73,8 @@ function DashboardPage() {
         description="Here is your school's attendance at a glance."
         action={(
           <button className="button button-secondary" onClick={() => setReload((value) => value + 1)}>
-            <RefreshCw size={16} />
-            Refresh
+            <RefreshCw className={loading && hasLoaded ? 'spin' : ''} size={16} />
+            {loading && hasLoaded ? 'Updating' : 'Refresh'}
           </button>
         )}
       />
@@ -85,7 +87,7 @@ function DashboardPage() {
             <div className={`stat-icon stat-icon-${tone}`}><Icon size={19} /></div>
             <div className="stat-copy">
               <span>{label}</span>
-              <strong>{loading || !statistics ? '—' : statistics[key].toLocaleString()}</strong>
+              <strong>{!statistics ? '—' : statistics[key].toLocaleString()}</strong>
             </div>
             <span className="stat-total">
               {key === 'present_today'
@@ -105,10 +107,12 @@ function DashboardPage() {
               <p className="eyebrow">Live overview</p>
               <h2>Today’s attendance</h2>
             </div>
-            <span className="panel-date">CAT · Kigali</span>
+            <span className={`panel-date${loading && hasLoaded ? ' panel-updating' : ''}`}>
+              {loading && hasLoaded ? <><RefreshCw className="spin" size={12} /> Updating</> : 'CAT · Kigali'}
+            </span>
           </div>
 
-          {loading && !statistics ? <LoadingState label="Loading attendance" /> : (
+          {loading && !hasLoaded ? <LoadingState label="Loading attendance" /> : (
             <>
               <div className="attendance-rate-row">
                 <div>
@@ -140,7 +144,7 @@ function DashboardPage() {
             <Link className="text-link" to="/attendance">Full log <ArrowRight size={15} /></Link>
           </div>
 
-          {loading && !attendance.length ? <LoadingState label="Loading scans" /> : attendance.length ? (
+          {loading && !hasLoaded ? <LoadingState label="Loading scans" /> : attendance.length ? (
             <div className="recent-list">
               {attendance.slice(0, 5).map((record) => (
                 <div className="recent-row" key={record.id}>
@@ -177,7 +181,7 @@ function DashboardPage() {
               <span className="summary-label">School roll</span>
             </div>
             <strong className="summary-value">
-              {loading || !statistics ? '—' : statistics.total_students.toLocaleString()}
+              {!statistics ? '—' : statistics.total_students.toLocaleString()}
             </strong>
             <span className="summary-caption">registered students</span>
             <div className="summary-bottom">
