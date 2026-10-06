@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+*.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# VS Code
+.vscode/
+
+# Arduino
+*.bin
+*.elf
+
+# OS
+.DS_Store
+Thumbs.db
