@@ -12,7 +12,7 @@ Student registration with scan-to-assign RFID enrollment, student register, card
 ## Supabase setup
 
 1. Open the Supabase project SQL Editor.
-2. Run [`database/schema.sql`](database/schema.sql). If the original tables are already installed, run the updated file again to add the RFID enrollment request table; existing tables and records are preserved.
+2. Run [`database/schema.sql`](database/schema.sql). If the original tables are already installed, rerun the updated file to add the enrollment and attendance scan-event tables/columns; existing tables and records are preserved.
 3. In Supabase project settings, copy the project URL and a **server-only secret/service-role key**. Do not use the publishable/anon key for the backend, and never put the secret in the frontend or firmware.
 4. Copy `backend/.env.example` to `backend/.env` and fill in the project URL and server-only key. Keep `.env` private; it is ignored by Git.
 
@@ -43,6 +43,8 @@ npm run dev
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Vite proxies `/api` to the local FastAPI server. FastAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
 Attendance dates and dashboard totals use the `Africa/Kigali` timezone. The first RFID scan from an active student/card pair is recorded for the day; later scans that day return `already_recorded`.
+
+Attendance scans, including rejected attempts and repeat check-ins, appear in the global notification bell and toast alerts on every app page. These notifications require the `attendance_scan_events` table from the current schema.
 
 ## ESP32 reader
 

@@ -6,6 +6,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import AttendanceNotifications from './AttendanceNotifications.jsx'
 
 const navigation = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -66,10 +67,13 @@ function AppShell() {
             <span className="topbar-kicker">School administration</span>
             <span className="topbar-current">{headings[location.pathname] || 'Classmark'}</span>
           </div>
-          <div className="topbar-date">
-            <span className="live-dot" />
-            <span>{date}</span>
-            <span className="timezone-label">CAT</span>
+          <div className="topbar-actions">
+            <AttendanceNotifications />
+            <div className="topbar-date">
+              <span className="live-dot" />
+              <span>{date}</span>
+              <span className="timezone-label">CAT</span>
+            </div>
           </div>
         </header>
 

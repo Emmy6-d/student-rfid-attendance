@@ -37,6 +37,16 @@ create table if not exists public.attendance (
     constraint attendance_one_per_student_per_day unique (student_id, attendance_date)
 );
 
+create table if not exists public.attendance_scan_events (
+    id uuid primary key default gen_random_uuid(),
+    student_id uuid references public.students(id) on delete set null,
+    rfid_uid text not null default '',
+    status text not null,
+    message text not null,
+    device_id text,
+    created_at timestamptz not null default now()
+);
+
 create table if not exists public.rfid_enrollment_requests (
     id uuid primary key default gen_random_uuid(),
     student_id uuid not null references public.students(id) on delete restrict,
@@ -60,6 +70,9 @@ create index if not exists attendance_date_scanned_at_idx
 create index if not exists attendance_student_scanned_at_idx
     on public.attendance(student_id, scanned_at desc);
 
+create index if not exists attendance_scan_events_created_at_idx
+    on public.attendance_scan_events(created_at desc);
+
 create unique index if not exists rfid_enrollment_one_pending_per_student
     on public.rfid_enrollment_requests(student_id)
     where status = 'pending';
@@ -71,10 +84,12 @@ create index if not exists rfid_enrollment_pending_created_at_idx
 alter table public.students enable row level security;
 alter table public.rfid_cards enable row level security;
 alter table public.attendance enable row level security;
+alter table public.attendance_scan_events enable row level security;
 alter table public.rfid_enrollment_requests enable row level security;
 
 grant usage on schema public to service_role;
 grant select, insert, update, delete on public.students to service_role;
 grant select, insert, update, delete on public.rfid_cards to service_role;
 grant select, insert, update, delete on public.attendance to service_role;
+grant select, insert, update, delete on public.attendance_scan_events to service_role;
 grant select, insert, update, delete on public.rfid_enrollment_requests to service_role;

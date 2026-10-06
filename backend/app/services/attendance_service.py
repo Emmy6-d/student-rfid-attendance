@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -6,6 +7,27 @@ RWANDA_TIMEZONE = ZoneInfo("Africa/Kigali")
 
 from app.database import supabase
 from app.schemas.attendance import AttendanceScan
+
+logger = logging.getLogger(__name__)
+
+
+def _record_attendance_scan_event(
+    uid: str,
+    status: str,
+    message: str,
+    device_id: str | None = None,
+    student_uuid: str | None = None,
+):
+    try:
+        supabase.table("attendance_scan_events").insert({
+            "student_id": student_uuid,
+            "rfid_uid": uid,
+            "status": status,
+            "message": message,
+            "device_id": device_id,
+        }).execute()
+    except Exception:
+        logger.exception("Could not persist attendance scan event for UID %s", uid)
 
 
 def process_attendance_scan(data: AttendanceScan):
@@ -17,6 +39,12 @@ def process_attendance_scan(data: AttendanceScan):
     uid = data.uid.strip().upper()
 
     if not uid:
+        _record_attendance_scan_event(
+            uid="",
+            status="invalid_uid",
+            message="RFID UID is empty",
+            device_id=data.device_id,
+        )
         return {
             "success": False,
             "status": "invalid_uid",
@@ -36,6 +64,12 @@ def process_attendance_scan(data: AttendanceScan):
     )
 
     if not rfid_response.data:
+        _record_attendance_scan_event(
+            uid=uid,
+            status="card_not_registered",
+            message="RFID card is not registered",
+            device_id=data.device_id,
+        )
 
         return {
             "success": False,
@@ -50,6 +84,12 @@ def process_attendance_scan(data: AttendanceScan):
     # ==========================================================
 
     if not rfid_card["active"]:
+        _record_attendance_scan_event(
+            uid=uid,
+            status="card_inactive",
+            message="RFID card is inactive",
+            device_id=data.device_id,
+        )
 
         return {
             "success": False,
@@ -70,6 +110,12 @@ def process_attendance_scan(data: AttendanceScan):
     )
 
     if not student_response.data:
+        _record_attendance_scan_event(
+            uid=uid,
+            status="student_not_found",
+            message="Student associated with RFID card was not found",
+            device_id=data.device_id,
+        )
 
         return {
             "success": False,
@@ -84,6 +130,13 @@ def process_attendance_scan(data: AttendanceScan):
     # ==========================================================
 
     if not student["status"]:
+        _record_attendance_scan_event(
+            uid=uid,
+            status="student_inactive",
+            message="Student is inactive",
+            device_id=data.device_id,
+            student_uuid=student["id"],
+        )
 
         return {
             "success": False,
@@ -118,6 +171,14 @@ def process_attendance_scan(data: AttendanceScan):
     if attendance_response.data:
 
         existing_attendance = attendance_response.data[0]
+        student_name = f"{student['first_name']} {student['last_name']}"
+        _record_attendance_scan_event(
+            uid=uid,
+            status="already_recorded",
+            message=f"Attendance already recorded today for {student_name}",
+            device_id=data.device_id,
+            student_uuid=student["id"],
+        )
 
         return {
             "success": True,
@@ -157,6 +218,13 @@ def process_attendance_scan(data: AttendanceScan):
     # ==========================================================
 
     if not insert_response.data:
+        _record_attendance_scan_event(
+            uid=uid,
+            status="attendance_failed",
+            message="Attendance could not be recorded",
+            device_id=data.device_id,
+            student_uuid=student["id"],
+        )
 
         return {
             "success": False,
@@ -165,6 +233,14 @@ def process_attendance_scan(data: AttendanceScan):
         }
 
     attendance = insert_response.data[0]
+    student_name = f"{student['first_name']} {student['last_name']}"
+    _record_attendance_scan_event(
+        uid=uid,
+        status="attendance_recorded",
+        message=f"Attendance recorded for {student_name}",
+        device_id=data.device_id,
+        student_uuid=student["id"],
+    )
 
     # ==========================================================
     # 10. SUCCESS RESPONSE
@@ -324,6 +400,45 @@ def get_student_attendance_history(
         )
 
     return records
+
+
+def get_attendance_scan_events(
+    since: datetime | None = None,
+    limit: int = 25,
+):
+    query = (
+        supabase
+        .table("attendance_scan_events")
+        .select("*, students(student_id, first_name, last_name)")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+
+    if since:
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+        query = query.gt("created_at", since.astimezone(timezone.utc).isoformat())
+
+    response = query.execute()
+    events = []
+
+    for row in response.data:
+        student = row.get("students") or {}
+        student_name = (
+            f"{student.get('first_name', '')} {student.get('last_name', '')}"
+        ).strip()
+        events.append({
+            "id": row["id"],
+            "student_id": student.get("student_id"),
+            "student_name": student_name or None,
+            "uid": row["rfid_uid"],
+            "status": row["status"],
+            "message": row["message"],
+            "device_id": row.get("device_id"),
+            "created_at": row["created_at"],
+        })
+
+    return events
 
 
 def get_dashboard_statistics():

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas.attendance import (
@@ -12,7 +14,8 @@ from app.services.attendance_service import (
     get_attendance_records,
     get_today_attendance,
     get_student_attendance_history,
-    get_dashboard_statistics
+    get_dashboard_statistics,
+    get_attendance_scan_events,
 )
 
 
@@ -109,6 +112,17 @@ def get_today():
             status_code=500,
             detail=str(error)
         )
+
+
+@router.get("/events")
+def attendance_scan_events(
+    since: datetime | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=100),
+):
+    try:
+        return get_attendance_scan_events(since=since, limit=limit)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 # ============================================================
