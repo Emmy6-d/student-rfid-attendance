@@ -56,10 +56,10 @@ Connect each LED cathode (short leg/flat side) to GND; do not share a resistor b
 5. Set `API_URL` to the computer's LAN IPv4 address, for example `http://192.168.1.42:8000/attendance/scan`. Do not use `localhost` or `127.0.0.1`; those addresses point back to the ESP32 itself.
 6. Upload, open Serial Monitor at **115200 baud**, and confirm the reader connects to Wi-Fi.
 
-Start FastAPI on the LAN interface from the `backend` folder:
+Start FastAPI on the LAN interface from the `backend` folder. This script binds the server to `0.0.0.0` so the ESP32 can connect:
 
 ```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.\run_lan.ps1
 ```
 
 Allow inbound TCP port 8000 for the private network in Windows Firewall if prompted. Keep the computer and ESP32 on a trusted network. The HTTP connection is unencrypted and the API currently has no user authentication; do not port-forward it or expose it to the public internet.

@@ -6,7 +6,7 @@
 
 const char *WIFI_SSID = "MERITE EQ";
 const char *WIFI_PASSWORD = "laurent2";
-const char *API_URL = "http://192.168.1.10:8000/attendance/scan";
+const char *API_URL = "http://192.168.0.104:8000/attendance/scan";
 const char *DEVICE_ID = "esp32-classroom-01";
 
 constexpr uint8_t RFID_SS_PIN = 5;
@@ -119,6 +119,8 @@ bool connectToWifi() {
 
   Serial.print("Wi-Fi connected; ESP32 address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("Wi-Fi gateway: ");
+  Serial.println(WiFi.gatewayIP());
   return true;
 }
 
@@ -144,7 +146,15 @@ void pollEnrollmentRequest() {
   http.end();
 
   if (httpCode != 200) {
-    Serial.printf("Enrollment queue poll failed: HTTP %d\n", httpCode);
+    if (httpCode < 0) {
+      Serial.printf("Enrollment queue poll failed: %d (%s) | target %s\n",
+                    httpCode,
+                    HTTPClient::errorToString(httpCode).c_str(),
+                    pendingUrl.c_str());
+    } else {
+      Serial.printf("Enrollment queue returned HTTP %d: %s\n",
+                    httpCode, responseBody.c_str());
+    }
     return;
   }
 
@@ -206,7 +216,12 @@ ScanResult postAttendanceAttempt(const String &uid) {
   const String responseBody = http.getString();
   http.end();
 
-  Serial.printf("UID %s | HTTP %d\n", uid.c_str(), httpCode);
+  if (httpCode < 0) {
+    Serial.printf("UID %s | transport error %d (%s)\n",
+                  uid.c_str(), httpCode, HTTPClient::errorToString(httpCode).c_str());
+  } else {
+    Serial.printf("UID %s | HTTP %d\n", uid.c_str(), httpCode);
+  }
   if (responseBody.length()) Serial.println(responseBody);
 
   if (httpCode < 200 || httpCode >= 300) {
@@ -266,7 +281,12 @@ ScanResult postEnrollmentAttempt(const String &uid) {
   const String responseBody = http.getString();
   http.end();
 
-  Serial.printf("Enrollment UID %s | HTTP %d\n", uid.c_str(), httpCode);
+  if (httpCode < 0) {
+    Serial.printf("Enrollment UID %s | transport error %d (%s)\n",
+                  uid.c_str(), httpCode, HTTPClient::errorToString(httpCode).c_str());
+  } else {
+    Serial.printf("Enrollment UID %s | HTTP %d\n", uid.c_str(), httpCode);
+  }
   if (responseBody.length()) Serial.println(responseBody);
 
   StaticJsonDocument<512> response;
@@ -354,6 +374,7 @@ void setup() {
 
   Serial.println("Classmark RFID attendance reader ready");
   Serial.println("Tap a registered MIFARE card to record attendance");
+  Serial.printf("API target: %s\n", API_URL);
   connectToWifi();
   lastEnrollmentPollAt = millis() - ENROLLMENT_POLL_INTERVAL_MS;
 }
@@ -374,11 +395,11 @@ void loop() {
   reader.PICC_HaltA();
   reader.PCD_StopCrypto1();
 
-  const uint32_t now = millis();
-  if (uid == lastUid && now - lastScanAt < SAME_CARD_COOLDOWN_MS) return;
+  const uint32_t scanNow = millis();
+  if (uid == lastUid && scanNow - lastScanAt < SAME_CARD_COOLDOWN_MS) return;
 
   lastUid = uid;
-  lastScanAt = now;
+  lastScanAt = scanNow;
   Serial.printf("Card detected: %s\n", uid.c_str());
   if (enrollmentRequestId.length()) {
     postEnrollment(uid);

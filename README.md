@@ -30,6 +30,8 @@ python -m pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+For hardware runs, `cd backend` and run `\.\run_lan.ps1`; it applies the LAN binding and uses the backend virtual environment.
+
 In a second terminal:
 
 ```powershell

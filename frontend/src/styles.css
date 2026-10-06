@@ -192,6 +192,25 @@ a { color: inherit; text-decoration: none; }
 .toggle-field small { color: #89958d; font-size: 9px; }
 .toggle-field input { width: 16px; height: 16px; accent-color: var(--forest); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 3px; }
+.card-enrollment-dialog { width: min(100%, 470px); }
+.scan-dialog-student { display: flex; align-items: center; gap: 10px; padding: 11px; background: #f7f9f5; border: 1px solid #e7ece4; border-radius: 5px; }
+.scan-dialog-student .student-cell-copy { flex: 1; }
+.scan-dialog-student .student-cell-copy strong { font-size: 12px; }
+.scan-dialog-student .student-cell-copy span { font-size: 10px; }
+.scan-complete-icon { flex: 0 0 auto; color: #478050; }
+.scan-dialog-student-complete { background: #f4faf0; border-color: #deead8; }
+.scan-uid-display { display: grid; justify-items: center; gap: 8px; margin-top: 17px; padding: 17px 12px; background: #f1f5e7; border: 1px solid #e3ebd1; border-radius: 5px; }
+.scan-uid-display > span { color: #73816d; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.scan-uid-display code { max-width: 100%; overflow-wrap: anywhere; color: #334f3e; font-family: 'DM Sans', monospace; font-size: 20px; font-weight: 700; }
+.scan-uid-display code:only-child { color: #879282; font-size: 12px; font-weight: 500; }
+.scan-uid-rejected { background: #fff3f0; border-color: #f0d4ce; }
+.scan-uid-rejected > span, .scan-uid-rejected code { color: #9a473b; }
+.scan-dialog-feedback { display: flex; align-items: flex-start; gap: 9px; margin: 13px 0; color: #68796d; font-size: 10px; line-height: 1.5; }
+.scan-dialog-feedback svg { flex: 0 0 auto; }
+.scan-dialog-success { color: #3c7247; }
+.scan-dialog-success svg { flex: 0 0 auto; }
+.card-enrollment-dialog .notice { margin: 11px 0; }
+.card-enrollment-dialog .modal-actions { margin-top: 17px; }
 
 .assign-layout { display: grid; grid-template-columns: minmax(0, 1fr) 235px; gap: 15px; margin-bottom: 19px; }
 .assign-panel { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(170px, 1fr) minmax(200px, 1.25fr) auto; align-items: end; gap: 13px; padding: 18px; }

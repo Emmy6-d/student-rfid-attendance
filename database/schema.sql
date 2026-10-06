@@ -44,11 +44,15 @@ create table if not exists public.rfid_enrollment_requests (
         check (status in ('pending', 'completed', 'cancelled')),
     rfid_card_id uuid references public.rfid_cards(id) on delete restrict,
     card_uid text,
+    last_scanned_uid text,
     device_id text,
     last_error text,
     created_at timestamptz not null default now(),
     completed_at timestamptz
 );
+
+alter table public.rfid_enrollment_requests
+    add column if not exists last_scanned_uid text;
 
 create index if not exists attendance_date_scanned_at_idx
     on public.attendance(attendance_date, scanned_at desc);

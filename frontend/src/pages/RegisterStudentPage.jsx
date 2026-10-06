@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowLeft,
   Check,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
+import CardEnrollmentDialog from '../components/CardEnrollmentDialog.jsx'
 import { Notice, PageHeader, StatusPill } from '../components/ui.jsx'
 
 const emptyForm = {
@@ -27,42 +28,10 @@ function RegisterStudentPage() {
   const [form, setForm] = useState(emptyForm)
   const [student, setStudent] = useState(null)
   const [enrollment, setEnrollment] = useState(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [enrollmentError, setEnrollmentError] = useState('')
-  const [pollError, setPollError] = useState('')
-
-  useEffect(() => {
-    if (!enrollment?.id || enrollment.status !== 'pending') return undefined
-
-    let disposed = false
-    let requestInFlight = false
-
-    async function refreshEnrollment() {
-      if (requestInFlight) return
-      requestInFlight = true
-
-      try {
-        const current = await api(`/rfid/enrollment-requests/${enrollment.id}`)
-        if (!disposed) {
-          setEnrollment(current)
-          setPollError('')
-        }
-      } catch (requestError) {
-        if (!disposed) setPollError(requestError.message)
-      } finally {
-        requestInFlight = false
-      }
-    }
-
-    refreshEnrollment()
-    const timer = window.setInterval(refreshEnrollment, 1500)
-
-    return () => {
-      disposed = true
-      window.clearInterval(timer)
-    }
-  }, [enrollment?.id, enrollment?.status])
 
   async function startEnrollment(studentRecord) {
     setEnrollmentError('')
@@ -72,6 +41,7 @@ function RegisterStudentPage() {
         body: JSON.stringify({ student_id: studentRecord.id }),
       })
       setEnrollment(request)
+      setDialogOpen(true)
     } catch (requestError) {
       setEnrollmentError(requestError.message)
     }
@@ -105,25 +75,13 @@ function RegisterStudentPage() {
     }
   }
 
-  async function cancelEnrollment() {
-    if (!enrollment?.id) return
-
-    try {
-      await api(`/rfid/enrollment-requests/${enrollment.id}/cancel`, { method: 'POST' })
-      setEnrollment({ ...enrollment, status: 'cancelled' })
-      setPollError('')
-    } catch (requestError) {
-      setPollError(requestError.message)
-    }
-  }
-
   function registerAnother() {
     setForm(emptyForm)
     setStudent(null)
     setEnrollment(null)
+    setDialogOpen(false)
     setFormError('')
     setEnrollmentError('')
-    setPollError('')
   }
 
   const fullName = student ? `${student.first_name} ${student.last_name}` : ''
@@ -251,8 +209,7 @@ function RegisterStudentPage() {
               {enrollment.last_error && (
                 <Notice>{enrollment.last_error}. Scan a different card to continue.</Notice>
               )}
-              {pollError && <Notice>{pollError}. Retrying automatically.</Notice>}
-              <button className="button button-secondary" onClick={cancelEnrollment}><X size={15} /> Cancel card scan</button>
+              <button className="button button-secondary" onClick={() => setDialogOpen(true)}><Radio size={15} /> Show scan dialog</button>
             </div>
           ) : cancelled ? (
             <div className="enrollment-idle">
@@ -271,8 +228,17 @@ function RegisterStudentPage() {
         </section>
       </div>
 
-      {enrollment?.status === 'pending' && (
+      {enrollment?.status === 'pending' && !dialogOpen && (
         <div className="enrollment-footer"><LoaderCircle className="spin" size={15} /> Waiting for the reader to assign a card to {fullName}</div>
+      )}
+
+      {dialogOpen && student && enrollment && (
+        <CardEnrollmentDialog
+          student={student}
+          enrollment={enrollment}
+          onEnrollmentChange={setEnrollment}
+          onClose={() => setDialogOpen(false)}
+        />
       )}
     </>
   )

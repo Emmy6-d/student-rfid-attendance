@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CreditCard, Link2, Pause, Play, Radio, Search } from 'lucide-react'
+import { Check, CreditCard, Pause, Play, Radio, Search } from 'lucide-react'
 import { api } from '../api.js'
+import CardEnrollmentDialog from '../components/CardEnrollmentDialog.jsx'
 import { EmptyState, LoadingState, Notice, PageHeader, StatusPill } from '../components/ui.jsx'
 
 function CardsPage() {
   const [cards, setCards] = useState([])
   const [students, setStudents] = useState([])
-  const [uid, setUid] = useState('')
   const [studentId, setStudentId] = useState('')
+  const [enrollingStudent, setEnrollingStudent] = useState(null)
+  const [enrollment, setEnrollment] = useState(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -52,21 +55,27 @@ function CardsPage() {
     ].some((value) => value?.toLowerCase().includes(query)))
   }, [cards, search])
 
-  async function assignCard(event) {
+  useEffect(() => {
+    if (enrollment?.status === 'completed') setReload((value) => value + 1)
+  }, [enrollment?.status])
+
+  async function startCardEnrollment(event) {
     event.preventDefault()
     setSaving(true)
     setError('')
     setNotice('')
 
     try {
-      const result = await api('/rfid/assign', {
+      const request = await api('/rfid/enrollment-requests', {
         method: 'POST',
-        body: JSON.stringify({ uid: uid.trim().replaceAll(' ', '').toUpperCase(), student_id: studentId }),
+        body: JSON.stringify({ student_id: studentId }),
       })
-      setNotice(result.message || 'Card assigned.')
-      setUid('')
+      const selectedStudent = students.find((student) => student.id === studentId)
+      if (!selectedStudent) throw new Error('Selected student is no longer available')
+      setEnrollingStudent(selectedStudent)
+      setEnrollment(request)
+      setDialogOpen(true)
       setStudentId('')
-      setReload((value) => value + 1)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -97,26 +106,21 @@ function CardsPage() {
       <PageHeader
         eyebrow="Access"
         title="RFID cards"
-        description="Assign a unique card UID to each active student."
+        description="Scan a card to link it to a student or replace their current card."
       />
 
       {error && <Notice>{error}</Notice>}
       {notice && <Notice tone="success">{notice}</Notice>}
 
       <section className="assign-layout">
-        <form className="panel assign-panel" onSubmit={assignCard}>
+        <form className="panel assign-panel" onSubmit={startCardEnrollment}>
           <div className="assign-heading">
             <span className="assign-icon"><Radio size={20} /></span>
             <div>
               <p className="eyebrow">New assignment</p>
-              <h2>Link a card</h2>
+              <h2>Scan a card</h2>
             </div>
           </div>
-          <label className="form-field">
-            <span>Card UID <b>*</b></span>
-            <input required maxLength={32} value={uid} onChange={(event) => setUid(event.target.value)} placeholder="Scan or enter UID" autoCapitalize="characters" />
-            <small>UIDs are stored in uppercase. Scan a card with your reader to identify it.</small>
-          </label>
           <label className="form-field">
             <span>Student <b>*</b></span>
             <select required value={studentId} onChange={(event) => setStudentId(event.target.value)}>
@@ -129,8 +133,8 @@ function CardsPage() {
             </select>
             {!activeStudents.length && <small>Add an active student before assigning a card.</small>}
           </label>
-          <button className="button button-primary button-wide" disabled={saving || !activeStudents.length}>
-            <Link2 size={16} /> {saving ? 'Assigning…' : 'Assign card'}
+          <button className="button button-primary button-wide" disabled={saving || !activeStudents.length || !studentId}>
+            <Radio size={16} /> {saving ? 'Preparing reader…' : 'Open scan dialog'}
           </button>
         </form>
 
@@ -205,6 +209,15 @@ function CardsPage() {
           />
         )}
       </section>
+
+      {dialogOpen && enrollingStudent && enrollment && (
+        <CardEnrollmentDialog
+          student={enrollingStudent}
+          enrollment={enrollment}
+          onEnrollmentChange={setEnrollment}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
     </>
   )
 }

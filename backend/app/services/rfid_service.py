@@ -261,6 +261,7 @@ def _enrollment_response(row: dict):
             f"{student.get('first_name', '')} {student.get('last_name', '')}"
         ).strip(),
         "card_uid": row.get("card_uid"),
+        "last_scanned_uid": row.get("last_scanned_uid"),
         "last_error": row.get("last_error"),
         "device_id": row.get("device_id"),
         "created_at": row.get("created_at"),
@@ -283,21 +284,6 @@ def create_enrollment_request(data: RFIDEnrollmentCreate):
     student = student_response.data[0]
     if not student["status"]:
         return {"success": False, "status": "student_inactive", "message": "Student is inactive"}
-
-    active_card_response = (
-        supabase
-        .table("rfid_cards")
-        .select("id")
-        .eq("student_id", data.student_id)
-        .eq("active", True)
-        .execute()
-    )
-    if active_card_response.data:
-        return {
-            "success": False,
-            "status": "student_already_has_card",
-            "message": "Student already has an active RFID card",
-        }
 
     pending_response = (
         supabase
@@ -396,6 +382,22 @@ def complete_enrollment_request(request_id: str, data: RFIDEnrollmentScan):
     uid = data.uid.strip().upper()
     if not uid:
         return {"success": False, "status": "invalid_uid", "message": "RFID UID is empty"}
+
+    scan_response = (
+        supabase
+        .table("rfid_enrollment_requests")
+        .update({
+            "last_scanned_uid": uid,
+            "device_id": data.device_id,
+            "last_error": None,
+        })
+        .eq("id", request_id)
+        .eq("status", "pending")
+        .execute()
+    )
+
+    if not scan_response.data:
+        return {"success": False, "status": "request_not_pending", "message": "Enrollment request is no longer pending"}
 
     assigned = assign_rfid(RFIDAssign(uid=uid, student_id=request["student_uuid"]))
     if not assigned["success"] and assigned["status"] != "already_assigned":
