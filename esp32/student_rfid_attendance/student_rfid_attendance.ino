@@ -6,7 +6,7 @@
 
 const char *WIFI_SSID = "MERITE EQ";
 const char *WIFI_PASSWORD = "laurent2";
-const char *API_URL = "http://192.168.0.104:8000/attendance/scan";
+const char *API_URL = "https://student-rfid-backend.onrender.com/attendance/scan";
 const char *DEVICE_ID = "esp32-classroom-01";
 
 constexpr uint8_t RFID_SS_PIN = 5;
