@@ -1,11 +1,15 @@
 #include <ArduinoJson.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
 #include <MFRC522.h>
+#include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <WebServer.h>
 
-#include "secrets.h"
+#include <esp_system.h>
+#include <time.h>
 
 const char *API_URL = "https://student-rfid-backend.onrender.com/attendance/scan";
 const char *DEVICE_ID = "esp32-classroom-01";
@@ -36,11 +40,28 @@ constexpr uint32_t SAME_CARD_COOLDOWN_MS = 2500;
 constexpr uint8_t MAX_SCAN_ATTEMPTS = 3;
 constexpr uint32_t ENROLLMENT_POLL_INTERVAL_MS = 2000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 60000;
+constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 15000;
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
+constexpr time_t VALID_CLOCK_EPOCH = 1700000000;
+constexpr uint8_t MAX_WIFI_NETWORKS = 40;
 
 MFRC522 reader(RFID_SS_PIN, RFID_RST_PIN);
+WebServer setupServer(80);
+DNSServer setupDnsServer;
+Preferences wifiPreferences;
 String lastUid;
 uint32_t lastScanAt = 0;
 uint32_t lastEnrollmentPollAt = 0;
+uint32_t wifiAttemptStartedAt = 0;
+uint32_t lastWifiAttemptAt = 0;
+bool wifiConnectionInProgress = false;
+bool wifiConnectedMessagePrinted = false;
+bool timeSyncRequested = false;
+bool clockIsSynchronized = false;
+String configuredWifiSsid;
+String configuredWifiPassword;
+String setupNetworkName;
+char setupNetworkPassword[13];
 String enrollmentRequestId;
 String enrollmentStudentName;
 String enrollmentStudentId;
@@ -49,6 +70,116 @@ enum class ScanResult {
   Completed,
   RetryableError
 };
+
+const char SETUP_PAGE[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123c35">
+  <title>RFID reader Wi-Fi setup</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#17332e;background:#f3f7f5}
+    body{margin:0;padding:24px 16px}
+    main{max-width:520px;margin:32px auto;background:white;padding:24px;border-radius:18px;box-shadow:0 12px 36px #17332e16}
+    h1{font-size:1.5rem;margin:0 0 8px}p{line-height:1.5;color:#526762}
+    label{display:block;margin-top:18px;font-weight:650}
+    select,input,button{box-sizing:border-box;width:100%;font:inherit;padding:12px;border:1px solid #bacbc5;border-radius:10px;margin-top:7px}
+    button{background:#126b55;border:0;color:#fff;font-weight:700;cursor:pointer;margin-top:14px}
+    button.secondary{background:#e7f2ee;color:#145744}
+    button:disabled{opacity:.55;cursor:wait}
+    #message{min-height:1.5em;margin-top:14px;font-weight:600}
+    .small{font-size:.9rem}.status{padding:12px;background:#edf6f2;border-radius:10px}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>RFID reader Wi-Fi setup</h1>
+    <p>Choose a nearby 2.4 GHz Wi-Fi network. Its password is saved on this ESP32 only.</p>
+    <p class="status" id="status">Checking reader connection…</p>
+    <button class="secondary" id="scan" type="button">Scan for networks</button>
+    <form id="wifi-form">
+      <label for="ssid">Wi-Fi network</label>
+      <select id="ssid" name="ssid" required>
+        <option value="">Scan and choose a network</option>
+      </select>
+      <label for="password">Wi-Fi password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" maxlength="64" placeholder="Leave blank for an open network">
+      <button id="connect" type="submit">Save and connect</button>
+    </form>
+    <div id="message" role="status" aria-live="polite"></div>
+    <p class="small">If a sign-in page normally appears when joining this network, it may not work with the ESP32. Use a 2.4 GHz network.</p>
+  </main>
+  <script>
+    const list = document.querySelector('#ssid');
+    const message = document.querySelector('#message');
+    const scanButton = document.querySelector('#scan');
+    const connectButton = document.querySelector('#connect');
+    async function loadStatus() {
+      try {
+        const response = await fetch('/status', {cache: 'no-store'});
+        const data = await response.json();
+        document.querySelector('#status').textContent = data.connected
+          ? `Connected to ${data.ssid} · device IP ${data.ip}`
+          : 'Not connected to Wi-Fi yet.';
+      } catch (_) {
+        document.querySelector('#status').textContent = 'Reader status unavailable.';
+      }
+    }
+    async function scanNetworks() {
+      scanButton.disabled = true;
+      message.textContent = 'Scanning nearby networks…';
+      try {
+        const response = await fetch('/networks', {cache: 'no-store'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Network scan failed.');
+        const strongest = new Map();
+        for (const network of data.networks) {
+          if (!network.ssid) continue;
+          if (!strongest.has(network.ssid) || strongest.get(network.ssid).rssi < network.rssi) strongest.set(network.ssid, network);
+        }
+        list.replaceChildren(new Option('Choose a network', ''));
+        [...strongest.values()].sort((a, b) => b.rssi - a.rssi).forEach(network => {
+          const option = new Option(`${network.ssid} (${network.rssi} dBm${network.secure ? ', secured' : ', open'})`, network.ssid);
+          list.add(option);
+        });
+        message.textContent = strongest.size ? `Found ${strongest.size} network(s).` : 'No named networks found. Try scanning again.';
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        scanButton.disabled = false;
+      }
+    }
+    scanButton.addEventListener('click', scanNetworks);
+    document.querySelector('#wifi-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      connectButton.disabled = true;
+      message.textContent = 'Trying to connect. This may take up to 20 seconds…';
+      try {
+        const form = new URLSearchParams(new FormData(event.currentTarget));
+        const response = await fetch('/connect', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: form
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not connect.');
+        message.textContent = `Connected to ${data.ssid}. You can close this page.`;
+        document.querySelector('#password').value = '';
+        await loadStatus();
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        connectButton.disabled = false;
+      }
+    });
+    loadStatus();
+    scanNetworks();
+  </script>
+</body>
+</html>
+)HTML";
 
 void indicatorsOff() {
   digitalWrite(GREEN_LED_PIN, LOW);
@@ -117,29 +248,200 @@ String readCardUid() {
   return uid;
 }
 
-bool connectToWifi() {
-  if (WiFi.status() == WL_CONNECTED) return true;
+void sendJsonError(int statusCode, const char *message) {
+  StaticJsonDocument<192> response;
+  response["error"] = message;
+  String body;
+  serializeJson(response, body);
+  setupServer.send(statusCode, "application/json", body);
+}
 
-  Serial.printf("Connecting to Wi-Fi: %s\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+void handleSetupRoot() {
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send_P(200, "text/html; charset=utf-8", SETUP_PAGE);
+}
 
-  for (uint8_t attempt = 0; attempt < 30 && WiFi.status() != WL_CONNECTED; attempt++) {
-    delay(350);
-    Serial.print('.');
+void handleSetupStatus() {
+  StaticJsonDocument<256> response;
+  const bool connected = WiFi.status() == WL_CONNECTED;
+  response["connected"] = connected;
+  response["ssid"] = connected ? WiFi.SSID() : "";
+  response["ip"] = connected ? WiFi.localIP().toString() : "";
+  String body;
+  serializeJson(response, body);
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send(200, "application/json", body);
+}
+
+void handleNetworkScan() {
+  const int networkCount = WiFi.scanNetworks(false, true);
+  if (networkCount < 0) {
+    WiFi.scanDelete();
+    sendJsonError(500, "Wi-Fi scan failed. Please try again.");
+    return;
   }
-  Serial.println();
+
+  DynamicJsonDocument response(8192);
+  JsonArray networks = response.createNestedArray("networks");
+  const int count = min(networkCount, static_cast<int>(MAX_WIFI_NETWORKS));
+  for (int index = 0; index < count; index++) {
+    JsonObject network = networks.createNestedObject();
+    network["ssid"] = WiFi.SSID(index);
+    network["rssi"] = WiFi.RSSI(index);
+    network["secure"] = WiFi.encryptionType(index) != WIFI_AUTH_OPEN;
+  }
+
+  String body;
+  serializeJson(response, body);
+  WiFi.scanDelete();
+  setupServer.sendHeader("Cache-Control", "no-store");
+  setupServer.send(200, "application/json", body);
+}
+
+void handleWifiConnect() {
+  const String requestedSsid = setupServer.arg("ssid");
+  const String requestedPassword = setupServer.arg("password");
+  if (requestedSsid.isEmpty() || requestedSsid.length() > 32 || requestedPassword.length() > 64) {
+    sendJsonError(400, "Choose a valid Wi-Fi network and password.");
+    return;
+  }
+
+  const String previousSsid = configuredWifiSsid;
+  const String previousPassword = configuredWifiPassword;
+  wifiConnectionInProgress = false;
+  WiFi.disconnect(false, false);
+  WiFi.begin(requestedSsid.c_str(), requestedPassword.c_str());
+
+  const uint32_t startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - startedAt < WIFI_CONNECT_TIMEOUT_MS) {
+    delay(100);
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Wi-Fi connection failed");
-    return false;
+    configuredWifiSsid = previousSsid;
+    configuredWifiPassword = previousPassword;
+    if (!previousSsid.isEmpty()) {
+      WiFi.begin(previousSsid.c_str(), previousPassword.c_str());
+      wifiConnectionInProgress = true;
+      wifiAttemptStartedAt = millis();
+      lastWifiAttemptAt = wifiAttemptStartedAt;
+    }
+    sendJsonError(400, "Could not connect. Check the password and use a 2.4 GHz network.");
+    return;
   }
 
-  Serial.print("Wi-Fi connected; ESP32 address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Wi-Fi gateway: ");
-  Serial.println(WiFi.gatewayIP());
-  return true;
+  configuredWifiSsid = requestedSsid;
+  configuredWifiPassword = requestedPassword;
+  wifiPreferences.putString("ssid", configuredWifiSsid);
+  wifiPreferences.putString("password", configuredWifiPassword);
+  wifiConnectionInProgress = false;
+  wifiConnectedMessagePrinted = false;
+
+  StaticJsonDocument<192> response;
+  response["connected"] = true;
+  response["ssid"] = WiFi.SSID();
+  response["ip"] = WiFi.localIP().toString();
+  String body;
+  serializeJson(response, body);
+  setupServer.send(200, "application/json", body);
+
+  Serial.printf("Connected to Wi-Fi: %s | device IP: %s\n",
+                WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+}
+
+void handleUnknownSetupPath() {
+  setupServer.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+  setupServer.send(302, "text/plain", "");
+}
+
+void startSetupPortal() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+
+  String macSuffix = WiFi.macAddress();
+  macSuffix.replace(":", "");
+  setupNetworkName = "Classmark-Setup-" + macSuffix.substring(max(0, static_cast<int>(macSuffix.length()) - 4));
+  snprintf(setupNetworkPassword, sizeof(setupNetworkPassword), "%08lx%04lx",
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random() & 0xffff));
+
+  if (!WiFi.softAP(setupNetworkName.c_str(), setupNetworkPassword)) {
+    Serial.println("Could not start Wi-Fi setup hotspot");
+  } else {
+    Serial.printf("Wi-Fi setup hotspot: %s\n", setupNetworkName.c_str());
+    Serial.printf("Temporary hotspot password: %s\n", setupNetworkPassword);
+    Serial.printf("Setup page: http://%s/\n", WiFi.softAPIP().toString().c_str());
+  }
+
+  setupDnsServer.start(53, "*", WiFi.softAPIP());
+  setupServer.on("/", HTTP_GET, handleSetupRoot);
+  setupServer.on("/status", HTTP_GET, handleSetupStatus);
+  setupServer.on("/networks", HTTP_GET, handleNetworkScan);
+  setupServer.on("/connect", HTTP_POST, handleWifiConnect);
+  setupServer.onNotFound(handleUnknownSetupPath);
+  setupServer.begin();
+}
+
+void loadSavedWifi() {
+  wifiPreferences.begin("wifi-config", false);
+  configuredWifiSsid = wifiPreferences.getString("ssid", "");
+  configuredWifiPassword = wifiPreferences.getString("password", "");
+  if (configuredWifiSsid.isEmpty()) {
+    Serial.println("No saved Wi-Fi credentials. Configure Wi-Fi through the setup hotspot.");
+    return;
+  }
+
+  Serial.printf("Connecting to saved Wi-Fi: %s\n", configuredWifiSsid.c_str());
+  WiFi.begin(configuredWifiSsid.c_str(), configuredWifiPassword.c_str());
+  wifiConnectionInProgress = true;
+  wifiAttemptStartedAt = millis();
+  lastWifiAttemptAt = wifiAttemptStartedAt;
+}
+
+bool connectToWifi() {
+  if (WiFi.status() == WL_CONNECTED) return clockIsSynchronized;
+  if (configuredWifiSsid.isEmpty()) return false;
+
+  const uint32_t now = millis();
+  if (wifiConnectionInProgress &&
+      now - wifiAttemptStartedAt >= WIFI_CONNECT_TIMEOUT_MS) {
+    wifiConnectionInProgress = false;
+    Serial.println("Wi-Fi connection timed out; setup hotspot remains available");
+  }
+
+  if (!wifiConnectionInProgress &&
+      now - lastWifiAttemptAt >= WIFI_RETRY_INTERVAL_MS) {
+    Serial.printf("Retrying Wi-Fi connection: %s\n", configuredWifiSsid.c_str());
+    WiFi.begin(configuredWifiSsid.c_str(), configuredWifiPassword.c_str());
+    wifiConnectionInProgress = true;
+    wifiAttemptStartedAt = now;
+    lastWifiAttemptAt = now;
+  }
+  return false;
+}
+
+void serviceWifiStatus() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnectionInProgress = false;
+    if (!timeSyncRequested) {
+      configTime(0, 0, "pool.ntp.org", "time.google.com");
+      timeSyncRequested = true;
+      Serial.println("Synchronizing clock for secure HTTPS...");
+    }
+    if (!clockIsSynchronized && time(nullptr) >= VALID_CLOCK_EPOCH) {
+      clockIsSynchronized = true;
+      Serial.println("Clock synchronized; secure HTTPS is ready");
+    }
+    if (!wifiConnectedMessagePrinted) {
+      wifiConnectedMessagePrinted = true;
+      Serial.printf("Wi-Fi connected; ESP32 address: %s\n", WiFi.localIP().toString().c_str());
+      Serial.printf("Wi-Fi gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+    }
+  } else {
+    wifiConnectedMessagePrinted = false;
+    timeSyncRequested = false;
+  }
 }
 
 String apiBaseUrl() {
@@ -397,13 +699,17 @@ void setup() {
   delay(50);
 
   Serial.println("Classmark RFID attendance reader ready");
-  Serial.println("Tap a registered MIFARE card to record attendance");
   Serial.printf("API target: %s\n", API_URL);
-  connectToWifi();
+  startSetupPortal();
+  loadSavedWifi();
   lastEnrollmentPollAt = millis() - ENROLLMENT_POLL_INTERVAL_MS;
 }
 
 void loop() {
+  setupDnsServer.processNextRequest();
+  setupServer.handleClient();
+  serviceWifiStatus();
+
   const uint32_t now = millis();
   if (now - lastEnrollmentPollAt >= ENROLLMENT_POLL_INTERVAL_MS) {
     lastEnrollmentPollAt = now;

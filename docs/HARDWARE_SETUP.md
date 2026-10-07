@@ -52,10 +52,15 @@ Connect each LED cathode (short leg/flat side) to GND; do not share a resistor b
 1. Install Arduino IDE and the Espressif ESP32 board package.
 2. Select an ESP32 Dev Module board and the detected serial port.
 3. In Library Manager install **MFRC522** by GithubCommunity and **ArduinoJson 6**.
-4. Copy `esp32/student_rfid_attendance/secrets.example.h` to `esp32/student_rfid_attendance/secrets.h` and set your Wi-Fi credentials in the local copy. `secrets.h` is ignored by Git; do not commit it.
-5. For the deployed backend, keep `API_URL` set to `https://student-rfid-backend.onrender.com/attendance/scan`. The firmware uses a secure TLS client and verifies the backend certificate. The first request can take longer while Render wakes its service.
-6. For local development only, set `API_URL` to the computer's LAN IPv4 address, for example `http://192.168.1.42:8000/attendance/scan`, and temporarily switch the three firmware HTTP requests from `WiFiClientSecure` to `WiFiClient`. Restore the secure client before deploying to Render. Do not use `localhost` or `127.0.0.1`; those addresses point back to the ESP32 itself.
-7. Upload, open Serial Monitor at **115200 baud**, and confirm the reader connects to Wi-Fi.
+4. The ESP32 stores Wi-Fi credentials in its non-volatile preferences after setup; no Wi-Fi password is required in the sketch or `secrets.h`.
+5. Keep `API_URL` set to `https://student-rfid-backend.onrender.com/attendance/scan`. The firmware uses a secure TLS client and verifies the backend certificate. The first request can take longer while Render wakes its service.
+6. Upload the sketch, open Serial Monitor at **115200 baud**, and note the printed setup hotspot name and temporary password.
+7. On a phone or computer, join the `Classmark-Setup-...` Wi-Fi hotspot. If asked, stay connected without internet access. Open `http://192.168.4.1/` in a browser, scan for networks, choose the 2.4 GHz Wi-Fi network, enter its password, and select **Save and connect**. The setup hotspot remains available after the reader connects, so repeat these steps later to change networks. Its temporary password changes after each ESP32 restart; read the new one from Serial Monitor.
+8. Check the setup page for the connected network and device IP. The ESP32 also prints the connection status to Serial Monitor. Tap a registered card and check the serial output for a successful attendance API response.
+
+The setup hotspot is password-protected with a randomly generated temporary password printed to Serial Monitor. Wi-Fi credentials are stored on the ESP32 and sent only to the ESP32's local setup page; they are not sent to the Render backend. The ESP32 scans for nearby 2.4 GHz networks. It synchronizes its clock over NTP before using HTTPS to verify the backend certificate, so the selected network must allow internet access and DNS/NTP. Networks requiring a browser sign-in (captive portals) are generally unsupported.
+
+For local backend development only, change `API_URL` to the computer's LAN IPv4 address, for example `http://192.168.1.42:8000/attendance/scan`, and temporarily use `WiFiClient` rather than `WiFiClientSecure` in the three firmware HTTP requests. Restore HTTPS and the secure client before using Render. Do not use `localhost` or `127.0.0.1`; those addresses point back to the ESP32 itself.
 
 Start FastAPI on the LAN interface from the `backend` folder. This script binds the server to `0.0.0.0` so the ESP32 can connect:
 
@@ -68,7 +73,7 @@ Allow inbound TCP port 8000 for the private network in Windows Firewall if promp
 ## Enrollment and test
 
 1. Run [`database/schema.sql`](../database/schema.sql) in Supabase. If you ran it before adding this workflow, run the updated file again; it creates the enrollment request table without replacing existing tables or records.
-2. Set the backend `.env`, start FastAPI, and power the ESP32 reader. The ESP32 checks the enrollment queue every two seconds.
+2. Configure Wi-Fi through the ESP32 setup portal, set the backend `.env`, start FastAPI, and power the ESP32 reader. The ESP32 checks the enrollment queue every two seconds when it has an internet connection.
 3. In the web app open **Students → Add student**. Save the student details; the student ID and name appear on the registration page immediately, and an enrollment request is queued automatically.
 4. Wait until the registration page says **Reader ready**, then tap the student's card on the RC522 reader. The UID is sent to the pending enrollment request, assigned in Supabase, and displayed with the student's name and ID on that page.
 5. Observe the workflow indicators:
