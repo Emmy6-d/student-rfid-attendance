@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react'
+import { api } from '../api.js'
+
+function requestDashboardStatistics() {
+  return api('/attendance/dashboard/statistics')
+}
 
 function HomePage() {
   const [statistics, setStatistics] = useState({
@@ -13,36 +18,30 @@ function HomePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const API_URL = 'http://127.0.0.1:8000'
-
   useEffect(() => {
-    fetchDashboardStatistics()
+    requestDashboardStatistics()
+      .then(setStatistics)
+      .catch((error) => {
+        console.error('Dashboard error:', error)
+        setError(
+          'Unable to load dashboard statistics. Check that the backend is running and configured.'
+        )
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  const fetchDashboardStatistics = async () => {
-    try {
-      setLoading(true)
-      setError('')
-
-      const response = await fetch(
-        `${API_URL}/attendance/dashboard/statistics`
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard statistics')
-      }
-
-      const data = await response.json()
-
-      setStatistics(data)
-    } catch (error) {
-      console.error('Dashboard error:', error)
-      setError(
-        'Unable to load dashboard statistics. Make sure the FastAPI server is running.'
-      )
-    } finally {
-      setLoading(false)
-    }
+  const refreshDashboardStatistics = () => {
+    setLoading(true)
+    setError('')
+    requestDashboardStatistics()
+      .then(setStatistics)
+      .catch((error) => {
+        console.error('Dashboard error:', error)
+        setError(
+          'Unable to load dashboard statistics. Check that the backend is running and configured.'
+        )
+      })
+      .finally(() => setLoading(false))
   }
 
   const statisticsCards = [
@@ -104,7 +103,7 @@ function HomePage() {
           </p>
 
           <button
-            onClick={fetchDashboardStatistics}
+            onClick={refreshDashboardStatistics}
             className="mt-3 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
           >
             Retry
@@ -157,7 +156,7 @@ function HomePage() {
           </div>
 
           <button
-            onClick={fetchDashboardStatistics}
+            onClick={refreshDashboardStatistics}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             Refresh

@@ -42,6 +42,26 @@ npm run dev
 
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Vite proxies `/api` to the local FastAPI server. FastAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
+## Deploy to Render
+
+Deploy the backend as a **Web Service**:
+
+- **Root Directory:** `backend`
+- **Build Command:** `pip install -r requirements.txt`
+- **Start Command:** `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as backend environment variables. Keep the service-role key only on the backend.
+- After creating the frontend Static Site, set `FRONTEND_ORIGINS` to its exact origin, for example `https://your-frontend.onrender.com` (no trailing slash).
+
+Deploy the frontend as a **Static Site**:
+
+- **Root Directory:** `frontend`
+- **Build Command:** `npm ci && npm run build`
+- **Publish Directory:** `dist`
+- Set `VITE_API_BASE_URL` to `https://student-rfid-backend.onrender.com` (no trailing slash). This value is included at build time; trigger a new deploy after changing it.
+- Add a rewrite rule from `/*` to `/index.html` so React Router routes work when opened directly.
+
+The Vite proxy in `frontend/vite.config.js` is for local development only. In production, frontend API requests use `VITE_API_BASE_URL` directly and the backend must allow the deployed frontend origin through `FRONTEND_ORIGINS`.
+
 Attendance dates and dashboard totals use the `Africa/Kigali` timezone. The first RFID scan from an active student/card pair is recorded for the day; later scans that day return `already_recorded`.
 
 Attendance scans, including rejected attempts and repeat check-ins, appear in the global notification bell and toast alerts on every app page. These notifications require the `attendance_scan_events` table from the current schema.
