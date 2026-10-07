@@ -57,7 +57,7 @@ Deploy the frontend as a **Static Site**:
 - **Root Directory:** `frontend`
 - **Build Command:** `npm ci && npm run build`
 - **Publish Directory:** `dist`
-- Set `VITE_API_BASE_URL` to `https://student-rfid-backend.onrender.com` (no trailing slash). This value is included at build time; trigger a new deploy after changing it.
+- Optionally set `VITE_API_BASE_URL` to `https://student-rfid-backend.onrender.com` (no trailing slash). Production builds use this backend URL by default; a supplied environment variable overrides it. Changes to this variable are included at build time, so trigger a new deploy after changing it.
 - Add a rewrite rule from `/*` to `/index.html` so React Router routes work when opened directly.
 
 The Vite proxy in `frontend/vite.config.js` is for local development only. In production, frontend API requests use `VITE_API_BASE_URL` directly and the backend must allow the deployed frontend origin through `FRONTEND_ORIGINS`.
