@@ -3,11 +3,28 @@
 #include <MFRC522.h>
 #include <SPI.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
-const char *WIFI_SSID = "MERITE EQ";
-const char *WIFI_PASSWORD = "laurent2";
+#include "secrets.h"
+
 const char *API_URL = "https://student-rfid-backend.onrender.com/attendance/scan";
 const char *DEVICE_ID = "esp32-classroom-01";
+
+const char BACKEND_ROOT_CA[] PROGMEM = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz
+IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi
+AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi
+QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR
+HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
+9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8
+p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
+-----END CERTIFICATE-----
+)EOF";
 
 constexpr uint8_t RFID_SS_PIN = 5;
 constexpr uint8_t RFID_RST_PIN = 22;
@@ -18,6 +35,7 @@ constexpr uint8_t BUZZER_PIN = 26;
 constexpr uint32_t SAME_CARD_COOLDOWN_MS = 2500;
 constexpr uint8_t MAX_SCAN_ATTEMPTS = 3;
 constexpr uint32_t ENROLLMENT_POLL_INTERVAL_MS = 2000;
+constexpr uint32_t HTTP_TIMEOUT_MS = 60000;
 
 MFRC522 reader(RFID_SS_PIN, RFID_RST_PIN);
 String lastUid;
@@ -135,11 +153,15 @@ void pollEnrollmentRequest() {
   if (!connectToWifi()) return;
 
   const String pendingUrl = apiBaseUrl() + "/rfid/enrollment-requests/pending?device_id=" + DEVICE_ID;
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setCACert(BACKEND_ROOT_CA);
   HTTPClient http;
-  http.setTimeout(4000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
 
-  if (!http.begin(client, pendingUrl)) return;
+  if (!http.begin(client, pendingUrl)) {
+    Serial.printf("Could not open enrollment queue URL: %s\n", pendingUrl.c_str());
+    return;
+  }
 
   const int httpCode = http.GET();
   const String responseBody = http.getString();
@@ -196,9 +218,10 @@ ScanResult postAttendanceAttempt(const String &uid) {
     return ScanResult::RetryableError;
   }
 
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setCACert(BACKEND_ROOT_CA);
   HTTPClient http;
-  http.setTimeout(6000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
 
   if (!http.begin(client, API_URL)) {
     Serial.println("Could not open the attendance API connection");
@@ -261,9 +284,10 @@ ScanResult postEnrollmentAttempt(const String &uid) {
   if (!connectToWifi()) return ScanResult::RetryableError;
 
   const String enrollmentUrl = apiBaseUrl() + "/rfid/enrollment-requests/" + enrollmentRequestId + "/scan";
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setCACert(BACKEND_ROOT_CA);
   HTTPClient http;
-  http.setTimeout(6000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
 
   if (!http.begin(client, enrollmentUrl)) {
     Serial.println("Could not open the enrollment API connection");

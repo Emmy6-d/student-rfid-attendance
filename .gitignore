@@ -16,3 +16,4 @@ dist/
 *.bin
 *.elf
 .vscode/
+esp32/student_rfid_attendance/secrets.h

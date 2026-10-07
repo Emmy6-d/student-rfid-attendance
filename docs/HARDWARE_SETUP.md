@@ -52,9 +52,10 @@ Connect each LED cathode (short leg/flat side) to GND; do not share a resistor b
 1. Install Arduino IDE and the Espressif ESP32 board package.
 2. Select an ESP32 Dev Module board and the detected serial port.
 3. In Library Manager install **MFRC522** by GithubCommunity and **ArduinoJson 6**.
-4. In the `.ino` file set `WIFI_SSID` and `WIFI_PASSWORD`.
-5. Set `API_URL` to the computer's LAN IPv4 address, for example `http://192.168.1.42:8000/attendance/scan`. Do not use `localhost` or `127.0.0.1`; those addresses point back to the ESP32 itself.
-6. Upload, open Serial Monitor at **115200 baud**, and confirm the reader connects to Wi-Fi.
+4. Copy `esp32/student_rfid_attendance/secrets.example.h` to `esp32/student_rfid_attendance/secrets.h` and set your Wi-Fi credentials in the local copy. `secrets.h` is ignored by Git; do not commit it.
+5. For the deployed backend, keep `API_URL` set to `https://student-rfid-backend.onrender.com/attendance/scan`. The firmware uses a secure TLS client and verifies the backend certificate. The first request can take longer while Render wakes its service.
+6. For local development only, set `API_URL` to the computer's LAN IPv4 address, for example `http://192.168.1.42:8000/attendance/scan`, and temporarily switch the three firmware HTTP requests from `WiFiClientSecure` to `WiFiClient`. Restore the secure client before deploying to Render. Do not use `localhost` or `127.0.0.1`; those addresses point back to the ESP32 itself.
+7. Upload, open Serial Monitor at **115200 baud**, and confirm the reader connects to Wi-Fi.
 
 Start FastAPI on the LAN interface from the `backend` folder. This script binds the server to `0.0.0.0` so the ESP32 can connect:
 
@@ -77,4 +78,4 @@ Allow inbound TCP port 8000 for the private network in Windows Firewall if promp
    - **Red on + one long beep:** Wi-Fi/API/server failure. The reader retries the same scan up to two more times; inspect Serial Monitor if the reader remains offline.
 6. The enrollment request completes after a successful card assignment, and the reader returns to attendance mode. Verify the linked card on the student register and verify attendance scans in the Attendance log. New attendance outcomes, including rejected scans and repeat check-ins, also appear in the app-wide notification bell/toasts. Daily attendance uses `Africa/Kigali` and ignores duplicate check-ins.
 
-During registration the ESP32 polls `GET /rfid/enrollment-requests/pending` and posts the UID to `POST /rfid/enrollment-requests/{request_id}/scan`. Outside registration it uses `POST /attendance/scan`. It sends no Supabase credential; only the backend holds the database key. Student/card details and status messages are shown on the web page and Serial Monitor; no display module is connected.
+During registration the ESP32 polls `GET /rfid/enrollment-requests/pending` and posts the UID to `POST /rfid/enrollment-requests/{request_id}/scan`. Outside registration it uses `POST /attendance/scan`. It sends no Supabase credential; only the backend holds the database key. CORS settings apply to browser requests, not the ESP32. Student/card details and status messages are shown on the web page and Serial Monitor; no display module is connected.
