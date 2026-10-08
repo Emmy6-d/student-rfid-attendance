@@ -8,11 +8,11 @@
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
 
-#include <esp_system.h>
 #include <time.h>
 
 const char *API_URL = "https://student-rfid-backend.onrender.com/attendance/scan";
 const char *DEVICE_ID = "esp32-classroom-01";
+constexpr char SETUP_WIFI_PASSWORD[] = "Admin1234";
 
 const char BACKEND_ROOT_CA[] PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -61,7 +61,6 @@ bool clockIsSynchronized = false;
 String configuredWifiSsid;
 String configuredWifiPassword;
 String setupNetworkName;
-char setupNetworkPassword[13];
 String enrollmentRequestId;
 String enrollmentStudentName;
 String enrollmentStudentId;
@@ -362,15 +361,12 @@ void startSetupPortal() {
   String macSuffix = WiFi.macAddress();
   macSuffix.replace(":", "");
   setupNetworkName = "Classmark-Setup-" + macSuffix.substring(max(0, static_cast<int>(macSuffix.length()) - 4));
-  snprintf(setupNetworkPassword, sizeof(setupNetworkPassword), "%08lx%04lx",
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned long>(esp_random() & 0xffff));
 
-  if (!WiFi.softAP(setupNetworkName.c_str(), setupNetworkPassword)) {
+  if (!WiFi.softAP(setupNetworkName.c_str(), SETUP_WIFI_PASSWORD)) {
     Serial.println("Could not start Wi-Fi setup hotspot");
   } else {
     Serial.printf("Wi-Fi setup hotspot: %s\n", setupNetworkName.c_str());
-    Serial.printf("Temporary hotspot password: %s\n", setupNetworkPassword);
+    Serial.printf("Setup hotspot password: %s\n", SETUP_WIFI_PASSWORD);
     Serial.printf("Setup page: http://%s/\n", WiFi.softAPIP().toString().c_str());
   }
 
